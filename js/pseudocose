@@ -1,0 +1,36 @@
+// 需要完善 p2s() 函数，目前 p2s() 中得到两个array， 分别叫traverse和cycle
+// 其中 traverse包含了骨架顺序的信息；cycle包含了环的信息；另外传进来的matrix包含了双键和三建信息
+
+//------------pseudocode-----------------
+
+// 骨架信息
+scaffold(traverse)
+从traverse array的最后一个数开始往前检索，比如该数是a
+    如果a在前面的array中存在的话
+        将a后面的subarray放入()中
+        remove a
+        将(subarray)插入到前面出现的a后面
+返回结果 scaffold
+
+//加入环的信息
+ring(scaffold,cycle)
+i=1
+循环得从cycle中取出一个元素，每个元素是一个数对，比如（a，b），表示（a，b）之间打破了一根键以打破一个环
+    在scaffold中找到a和b,然后给a,b加上相同的脚标 i
+    i++
+返回结果 ring
+
+//加入双键和三键信息
+bond(ring,matrix)
+for (i=0; i< matrix.length;i++)
+    for (j =0; j< matrix.length;j++)
+        if (matrix[i][j]=2)
+            在ring中找到 i,j， 在他们之间加入双键“=”
+        else if (matrix[i][j]=2)
+            在ring中找到i,j,在他们之间加入“#”
+返回结果 bond
+
+bond 就是smile式了
+
+
+

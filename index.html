@@ -1,0 +1,227 @@
+<!-- This file is for the user interface. The user draw a sketch and we output the classification result.-->
+
+
+
+<html>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+    <script src="js/cornerFinder.js"></script>
+    <script src="js/point2smiles.js"></script>
+	<script src="js/substroke.js"></script>
+    <script type="text/javascript">
+    var canvas, ctx, flag = false;
+    var prevX = 0,currX = 0,prevY = 0,currY = 0,dot_flag = false;
+    var w = 800, h = 600;
+
+    var points = [];
+
+    function point(x,y,time){
+      this.x = x;
+      this.y = y;
+      this.time = time;
+    }
+
+
+    //recognize
+    //1. preprocess. find cornders
+    //2. transform the alkane into SMILEs form
+    //3. get the information of that alkane by search API
+
+    function reco(){
+        //var Points = resamplePoints(points);
+        console.log("points size: "+points.length);
+		// test for storke function
+		var strokes = stroke(points);
+        console.log("# of strokes: "+strokes.length);
+        // test for substroke function
+        var substrokes = find_substroke(strokes)[0];
+        console.log("# of substrokes: "+ substrokes.length);
+
+        var oxygen = find_substroke(strokes)[1];
+        console.log("oxygen: ",oxygen);
+
+        var arrK = [];
+        var endPoints = [];
+        //get all end points of substrokes
+        //find minimum substroke dis
+        var minDis = Infinity;
+        for (var i=0; i < substrokes.length;i++){
+            var p = substrokes[i];
+            var dis = distance(p,0,p.length-1);
+            if(dis!=0){
+                if(dis <= minDis){
+                    minDis = dis;
+                    console.log("current minDis: "+ minDis);
+                }
+                endPoints.push(p[0]);
+                endPoints.push(p[p.length-1]);
+                arrK.push(i);
+            }
+        }
+        console.log("# of endpoints: "+ endPoints.length);
+
+        //Group the end points and find nodes
+        var nodes = [];
+        
+        var min = minDis*0.3;
+        nodes = findNode(endPoints,min );
+
+        //rebuild endPoints array
+        var endPoints = [];
+        //get all end points of substrokes
+        for (var i=0; i < substrokes.length;i++){
+            var p = substrokes[i];
+            if(distance(p,0,p.length-1)!=0){
+                endPoints.push(p[0]);
+                endPoints.push(p[p.length-1]);
+            }
+        }
+        console.log("# of rebuild endpoints: "+ endPoints.length);
+
+        //build adjacent matrix
+        var matrix = adjMatrix(nodes,endPoints);
+
+
+        console.log("# of  nodes: "+ nodes.length);
+
+        for(var i=0;i<nodes.length;i++){
+            console.log(nodes[i][0].x+";");
+        }
+
+        console.log("# of  oxygen: "+ oxygen.length);
+
+        for(var i=0;i<oxygen.length;i++){
+            console.log(oxygen[i].x+";");
+        }
+
+        console.log("min: "+ min);
+
+        //list of oxygen nodes
+        if(oxygen.length>0){
+            var comb = [];
+            comb.push(nodes);
+            comb.push(oxygen);
+            var oList = [];
+            oList = oxList(comb,min);
+            console.log("# of oxygen nodes: "+ oList.length);
+
+            // var oxList = [];
+            // for(var i=0;i<nodes.length;i++){
+            //     for(var j=0;j<oxygen.length;j++){
+            //         if(close(nodes[i][0],oxygen[j],min)){
+            //             oxList.push(nodes[i]);
+            //         }
+            //     }
+            // }
+            // console.log("oxygenList: = "+oxList.length);
+            // for(var i=0;i<oxList.length;i++){
+            //     console.log(oxList[i][0].x+";");
+            // }
+        }
+        
+        var smiles = pointToSmiles(matrix,oList);
+
+        searchBySmiles(smiles);
+        return 0;
+    }
+
+
+    //this function search a molecule by SMILES, then open a page of the molecule
+    function searchBySmiles(input) {
+        var URL = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/"+input+'/JSON';
+        var c = '';
+        $.ajax({ url: URL, success:
+            function(data) {
+                var cid = data['PC_Compounds'][0].id.id.cid;
+                var c = "https://pubchem.ncbi.nlm.nih.gov/compound/" + cid;
+                window.open(c);
+            }
+        });
+    }
+
+    function init() {
+        canvas = document.getElementById('can');
+        ctx = canvas.getContext("2d");
+        w = canvas.width;
+        h = canvas.height;
+
+        canvas.addEventListener("mousemove", function (e) {
+            findxy('move', e)
+        }, false);
+        canvas.addEventListener("mousedown", function (e) {
+            findxy('down', e)
+        }, false);
+        canvas.addEventListener("mouseup", function (e) {
+            findxy('up', e)
+        }, false);
+        canvas.addEventListener("mouseout", function (e) {
+            findxy('out', e)
+        }, false);
+    }
+
+
+    function draw() {
+        ctx.beginPath();
+        ctx.moveTo(prevX, prevY);
+        ctx.lineTo(currX, currY);
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.closePath();
+    }
+
+    function erase() {
+        console.log("before erase points size: "+points.length);
+
+        ctx.clearRect(0, 0, w, h);
+        document.getElementById("canvasimg").style.display = "none";
+        points = [];
+        console.log("after erase points size: "+points.length);
+
+    }
+
+
+
+
+
+    function findxy(res, e) {
+        if (res == 'down') {
+            prevX = currX;
+            prevY = currY;
+            currX = e.clientX - canvas.offsetLeft;
+            currY = e.clientY - canvas.offsetTop;
+
+            flag = true;
+            dot_flag = true;
+            if (dot_flag) {
+                ctx.beginPath();
+                ctx.fillStyle = 'black';
+                ctx.fillRect(currX, currY, 2, 2);
+                ctx.closePath();
+                dot_flag = false;
+            }
+        }
+        if (res == 'up' || res == "out") { // mouse move out of position
+            flag = false;
+        }
+        if (res == 'move') {
+            if (flag) {
+                prevX = currX;
+                prevY = currY;
+                currX = e.clientX - canvas.offsetLeft;
+                currY = e.clientY - canvas.offsetTop;
+                draw();
+
+                var date = new Date();
+                var p = new point(prevX,prevY,date.getTime());
+                points.push(p);
+            }
+        }
+    }
+    </script>
+    <body onload="init()">
+        <canvas id="can" width="800" height="600" style="position:absolute;top:10%;left:10%;border:2px solid;"></canvas>
+        <img id="canvasimg" style="position:absolute;top:10%;left:52%;" style="display:none;">
+        <input type="button" value="recognize" id="btn" size="50" onclick="reco()" style="position:absolute;top:55%;left:80%;">
+        <input type="button" value="clear sketch" id="clr" size="50" onclick="erase()" style="position:absolute;top:60%;left:80%;">
+    </body>
+    </html>
